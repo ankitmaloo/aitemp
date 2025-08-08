@@ -1,0 +1,15 @@
+[project]
+name = "persona-simulator-backend"
+version = "0.1.0"
+description = "FastAPI backend for Persona Simulator"
+requires-python = ">=3.8"
+dependencies = [
+    "fastapi>=0.104.1",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.0.3",
+    "openai>=1.51.0",
+    "boto3>=1.35.0",
+    "google-generativeai>=0.8.0",
+    "python-dotenv>=1.0.0",
+]

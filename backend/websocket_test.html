@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test - Persona Simulator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.connected { background-color: #d4edda; color: #155724; }
+        .status.processing { background-color: #fff3cd; color: #856404; }
+        .status.error { background-color: #f8d7da; color: #721c24; }
+        .response-area {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            min-height: 200px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebSocket Test - Persona Simulator</h1>
+        
+        <div id="status" class="status">Disconnected</div>
+        
+        <div class="input-group">
+            <label for="messageType">Message Type:</label>
+            <select id="messageType">
+                <option value="openai_chat">OpenAI Chat</option>
+                <option value="chat">Persona Chat</option>
+                <option value="multi_chat">Multi-Persona Chat</option>
+            </select>
+        </div>
+        
+        <div class="input-group">
+            <label for="inputText">Message:</label>
+            <textarea id="inputText" rows="3" placeholder="Enter your message here...">Hello! Can you tell me a short joke?</textarea>
+        </div>
+        
+        <div class="input-group" id="personaGroup">
+            <label for="personaId">Persona ID:</label>
+            <input type="text" id="personaId" value="tech_enthusiast" placeholder="Enter persona ID">
+        </div>
+        
+        <div class="input-group" id="multiPersonaGroup" style="display: none;">
+            <label for="personaIds">Persona IDs (comma-separated):</label>
+            <input type="text" id="personaIds" value="tech_enthusiast,creative_writer,data_scientist" placeholder="persona1,persona2,persona3">
+        </div>
+        
+        <div class="input-group">
+            <label for="model">Model:</label>
+            <input type="text" id="model" value="gpt-4o-mini" placeholder="gpt-4o-mini">
+        </div>
+        
+        <button id="connectBtn" onclick="connect()">Connect</button>
+        <button id="sendBtn" onclick="sendMessage()" disabled>Send Message</button>
+        <button id="clearBtn" onclick="clearResponse()">Clear Response</button>
+        
+        <div class="input-group">
+            <label for="response">Response:</label>
+            <div id="response" class="response-area">Not connected...</div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let isConnected = false;
+
+        function updateStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        function updateMessageTypeFields() {
+            const messageType = document.getElementById('messageType').value;
+            const personaGroup = document.getElementById('personaGroup');
+            const multiPersonaGroup = document.getElementById('multiPersonaGroup');
+            
+            if (messageType === 'multi_chat') {
+                personaGroup.style.display = 'none';
+                multiPersonaGroup.style.display = 'block';
+            } else if (messageType === 'chat') {
+                personaGroup.style.display = 'block';
+                multiPersonaGroup.style.display = 'none';
+            } else {
+                personaGroup.style.display = 'none';
+                multiPersonaGroup.style.display = 'none';
+            }
+        }
+
+        function connect() {
+            if (isConnected) {
+                ws.close();
+                return;
+            }
+
+            ws = new WebSocket('ws://localhost:8000/ws');
+            
+            ws.onopen = function(event) {
+                isConnected = true;
+                updateStatus('Connected to WebSocket', 'connected');
+                document.getElementById('connectBtn').textContent = 'Disconnect';
+                document.getElementById('sendBtn').disabled = false;
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                const responseEl = document.getElementById('response');
+                
+                if (data.type === 'status') {
+                    updateStatus(data.message, 'processing');
+                } else if (data.type === 'chunk') {
+                    responseEl.textContent += data.chunk;
+                    if (data.is_final) {
+                        responseEl.textContent += '\n--- End of response ---\n';
+                    }
+                } else if (data.type === 'persona_response') {
+                    responseEl.textContent += `\n[${data.persona_id}]: ${data.response}\n`;
+                } else if (data.type === 'response') {
+                    responseEl.textContent += `\nFinal Response: ${JSON.stringify(data.data, null, 2)}\n`;
+                    updateStatus('Response completed', 'connected');
+                } else if (data.type === 'error') {
+                    responseEl.textContent += `\nError: ${data.message}\n`;
+                    updateStatus(`Error: ${data.message}`, 'error');
+                } else if (data.type === 'connection') {
+                    responseEl.textContent = 'WebSocket connected successfully!\n';
+                }
+            };
+            
+            ws.onclose = function(event) {
+                isConnected = false;
+                updateStatus('Disconnected', 'error');
+                document.getElementById('connectBtn').textContent = 'Connect';
+                document.getElementById('sendBtn').disabled = true;
+            };
+            
+            ws.onerror = function(error) {
+                updateStatus('Connection error', 'error');
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function sendMessage() {
+            if (!isConnected || !ws) {
+                alert('Not connected to WebSocket');
+                return;
+            }
+
+            const messageType = document.getElementById('messageType').value;
+            const inputText = document.getElementById('inputText').value;
+            const model = document.getElementById('model').value;
+            
+            let messageData = {
+                type: messageType,
+                data: {}
+            };
+
+            if (messageType === 'openai_chat') {
+                messageData.data = {
+                    input_text: inputText,
+                    model: model || 'gpt-4o-mini',
+                    include_reasoning: false
+                };
+            } else if (messageType === 'chat') {
+                messageData.data = {
+                    message: inputText,
+                    persona_id: document.getElementById('personaId').value || 'default',
+                    api: 'openai',
+                    model: model || 'gpt-4o-mini',
+                    temperature: 0.7
+                };
+            } else if (messageType === 'multi_chat') {
+                const personaIds = document.getElementById('personaIds').value.split(',').map(id => id.trim());
+                messageData.data = {
+                    message: inputText,
+                    persona_ids: personaIds,
+                    api: 'openai',
+                    model: model || 'gpt-4o-mini',
+                    temperature: 0.7
+                };
+            }
+
+            // Clear previous response
+            document.getElementById('response').textContent = 'Sending message...\n';
+            updateStatus('Sending message...', 'processing');
+            
+            ws.send(JSON.stringify(messageData));
+        }
+
+        function clearResponse() {
+            document.getElementById('response').textContent = '';
+        }
+
+        // Initialize
+        document.getElementById('messageType').addEventListener('change', updateMessageTypeFields);
+        updateMessageTypeFields();
+    </script>
+</body>
+</html>

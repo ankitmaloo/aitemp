@@ -7,6 +7,7 @@ import { About } from '@/pages/About'
 import { Chat } from '@/pages/Chat'
 import { ListCreator } from '@/pages/ListCreator'
 import { Details } from '@/pages/Details'
+import { ChatCopy } from './pages/ChatCopy'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/c" element={<ChatCopy />} />
             <Route path="/list-creator" element={<ListCreator />} />
             <Route path="/details" element={<Details />} />
           </Routes>
